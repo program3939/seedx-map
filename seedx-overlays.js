@@ -78,6 +78,24 @@
     }
   }
 
+  function drawPlayers(data) {
+    for (const player of data.players ?? []) {
+      const shortName = String(player.name || "?").slice(0, 2).toUpperCase();
+      const marker = L.marker(point(player.x, player.z), { icon: markerIcon("player", shortName) });
+      marker.bindTooltip(player.name || "Spieler", {
+        direction: "top",
+        offset: [0, -14],
+        permanent: true
+      });
+      marker.bindPopup(popup(player.name || "Spieler", [
+        ["Land", player.land || "Wildnis"],
+        ["Position", `${Math.round(player.x)} / ${Math.round(player.y)} / ${Math.round(player.z)}`],
+        ["UUID", player.uuid || "Unbekannt"]
+      ]));
+      marker.addTo(layerGroup);
+    }
+  }
+
   function drawSpawns(data) {
     for (const spawn of data.spawns ?? []) {
       const marker = L.marker(point(spawn.x, spawn.z), { icon: markerIcon("spawn", "SP") });
@@ -109,6 +127,7 @@
       }
       layerGroup = L.layerGroup().addTo(map());
       drawClaims(data);
+      drawPlayers(data);
       drawFlags(data);
       drawSpawns(data);
     } catch (error) {
