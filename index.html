@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SeedX Worldmap</title>
+  <style>
+    :root{--bg:#f3efe4;--panel:#fffdf7;--line:#d9d0be;--text:#1d241a;--muted:#6d7568;--accent:#3f7d35;--red:#b4232e}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Montserrat,Segoe UI,Helvetica,Arial,sans-serif;overflow:hidden}
+    header{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--line);background:rgba(255,253,247,.92);backdrop-filter:blur(10px)}
+    h1{margin:0;font-size:17px;letter-spacing:.04em;color:var(--text)}
+    .bar{display:flex;gap:8px;align-items:center}.pill,select,button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;padding:8px 11px;font:inherit}
+    button{cursor:pointer} button:hover{border-color:var(--accent)}
+    main{display:grid;grid-template-columns:1fr 310px;height:calc(100vh - 58px)}
+    canvas{width:100%;height:100%;display:block;cursor:grab}.side{border-left:1px solid var(--line);background:rgba(255,253,247,.94);padding:14px;overflow:auto}
+    .card{border-bottom:1px solid var(--line);padding:12px 0}.card:first-child{padding-top:0}.card h2{font-size:12px;margin:0 0 8px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+    .row{display:flex;justify-content:space-between;gap:10px;color:var(--muted);padding:4px 0;font-size:13px}.dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:8px}.warn{color:var(--red)}.small{color:var(--muted);font-size:12px;line-height:1.45}
+    @media(max-width:900px){main{grid-template-columns:1fr}.side{position:absolute;right:10px;top:68px;bottom:10px;width:min(310px,calc(100vw - 20px));border:1px solid var(--line);border-radius:16px}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SeedX Worldmap</h1>
+    <div class="bar">
+      <select id="world"></select>
+      <button id="fit">Ganze Welt</button>
+      <span class="pill" id="status">lade...</span>
+    </div>
+  </header>
+  <main>
+    <canvas id="map"></canvas>
+    <aside class="side">
+      <div class="card"><h2>Info</h2><div class="small" id="info">Mausrad: Zoom. Ziehen: Karte bewegen. Die komplette konfigurierte Overworld wird angezeigt, auch nicht generierte Chunks.</div></div>
+      <div class="card"><h2>Spieler</h2><div id="players"></div></div>
+      <div class="card"><h2>Länder</h2><div id="lands"></div></div>
+      <div class="card"><h2>Flaggen</h2><div id="flags"></div></div>
+      <div class="card"><h2>Spawns</h2><div id="spawns"></div></div>
+    </aside>
+  </main>
+  <script>
+    const token = '';
+    const canvas = document.getElementById('map');
+    const ctx = canvas.getContext('2d');
+    const worldSelect = document.getElementById('world');
+    let data = null, scale = 18, offX = 0, offY = 0, dragging = false, last = null;
+    function resize(){canvas.width=canvas.clientWidth*devicePixelRatio;canvas.height=canvas.clientHeight*devicePixelRatio;draw()}
+    addEventListener('resize', resize);
+    function api(){const w=worldSelect.value||'';return w?`data/${encodeURIComponent(w)}.json?v=${Date.now()}`:`data/worldmap.json?v=${Date.now()}`}
+    async function load(){try{const res=await fetch(api(),{cache:'no-store'});data=await res.json();if(data.error)throw new Error(data.error);syncWorlds();document.getElementById('status').textContent=new Date(data.generatedAt).toLocaleTimeString();renderLists();draw()}catch(e){document.getElementById('status').textContent='offline'}}
+    function syncWorlds(){const old=worldSelect.value;worldSelect.innerHTML='';for(const w of data.worlds){const o=document.createElement('option');o.value=w;o.textContent=w;worldSelect.appendChild(o)}worldSelect.value=old||data.world}
+    function fit(){if(!data)return;const b=data.bounds;const ww=(b.maxX-b.minX+1),hh=(b.maxZ-b.minZ+1);scale=Math.max(1,Math.min((canvas.width/devicePixelRatio-60)/ww,(canvas.height/devicePixelRatio-60)/hh));offX=canvas.width/devicePixelRatio/2-((b.minX+b.maxX)/2)*scale;offY=canvas.height/devicePixelRatio/2-((b.minZ+b.maxZ)/2)*scale;draw()}
+    function sx(x){return x*scale+offX} function sz(z){return z*scale+offY}
+    function draw(){if(!data)return;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);ctx.fillStyle='#f3efe4';ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);baseTerrain();grid();for(const r of data.generatedRegions)region(r.x,r.z,r.count);for(const g of data.generatedChunks)rect(g.x,g.z,'#76b852',.22);for(const c of data.terrain)rect(c.x,c.z,c.color,.9);for(const c of data.claims)rect(c.x,c.z,c.color,c.wartime?.55:.32,true);for(const f of data.flags)marker(f.x/16,f.z/16,'#e6b422','F'+f.id);for(const s of data.spawns)marker(s.chunkX,s.chunkZ,'#1677ff','SP');for(const p of data.players)marker(p.chunkX+.5,p.chunkZ+.5,'#111827',p.name)}
+    function visible(){return{minX:Math.max(data.bounds.minX,Math.floor((-offX)/scale)-2),maxX:Math.min(data.bounds.maxX,Math.ceil((canvas.clientWidth-offX)/scale)+2),minZ:Math.max(data.bounds.minZ,Math.floor((-offY)/scale)-2),maxZ:Math.min(data.bounds.maxZ,Math.ceil((canvas.clientHeight-offY)/scale)+2)}}
+    function baseTerrain(){const v=visible();for(let x=v.minX;x<=v.maxX;x++){for(let z=v.minZ;z<=v.maxZ;z++){const n=Math.abs((x*734287+z*912271)%100);ctx.fillStyle=n<8?'#6fbf4a':n<18?'#86c85f':'#79b957';ctx.fillRect(sx(x),sz(z),Math.ceil(scale),Math.ceil(scale))}}}
+    function grid(){const step=Math.max(1,Math.pow(2,Math.floor(Math.log2(64/scale))));ctx.strokeStyle='rgba(45,65,36,.16)';ctx.lineWidth=1;const v=visible();for(let x=Math.floor(v.minX/step)*step;x<=v.maxX;x+=step){ctx.beginPath();ctx.moveTo(sx(x),0);ctx.lineTo(sx(x),canvas.clientHeight);ctx.stroke()}for(let z=Math.floor(v.minZ/step)*step;z<=v.maxZ;z+=step){ctx.beginPath();ctx.moveTo(0,sz(z));ctx.lineTo(canvas.clientWidth,sz(z));ctx.stroke()}}
+    function rect(x,z,color,a,border=false){ctx.globalAlpha=a;ctx.fillStyle=color;ctx.fillRect(sx(x),sz(z),Math.max(1,scale),Math.max(1,scale));ctx.globalAlpha=1;if(border){ctx.strokeStyle='rgba(17,24,39,.24)';ctx.strokeRect(sx(x),sz(z),Math.max(1,scale),Math.max(1,scale))}}
+    function region(x,z,count){ctx.globalAlpha=.12;ctx.fillStyle='#3f7d35';ctx.fillRect(sx(x*32),sz(z*32),Math.max(1,32*scale),Math.max(1,32*scale));ctx.globalAlpha=1}
+    function marker(x,z,color,label){const px=sx(x),pz=sz(z);ctx.fillStyle=color;ctx.beginPath();ctx.arc(px,pz,5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fffdf7';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#111827';ctx.font='12px Segoe UI,Arial,sans-serif';ctx.fillText(label,px+7,pz-7)}
+    function renderLists(){info.innerHTML=`Aktualisiert: ${new Date(data.generatedAt).toLocaleTimeString()}<br>Grenzen: ${data.bounds.minX} / ${data.bounds.minZ} bis ${data.bounds.maxX} / ${data.bounds.maxZ} Chunks<br>Flaggen: ${data.flags.length} | Spawns: ${data.spawns.length}`;players.innerHTML=data.players.map(p=>`<div class="row"><span>${p.name}</span><span>${Math.round(p.x)} / ${Math.round(p.z)}</span></div>`).join('')||'<div class="small">Keine Spieler online.</div>';const by={};for(const c of data.claims){by[c.land]??={color:c.color,count:0,war:c.wartime};by[c.land].count++}lands.innerHTML=Object.entries(by).map(([n,v])=>`<div class="row"><span><i class="dot" style="background:${v.color}"></i>${n}${v.war?' <b class="warn">KRIEG</b>':''}</span><span>${v.count} Chunks</span></div>`).join('')||'<div class="small">Keine Claims.</div>';flags.innerHTML=data.flags.map(f=>`<div class="row"><span>F${f.id} ${f.land}</span><span>${f.x} / ${f.z}</span></div>`).join('')||'<div class="small">Keine Flaggen.</div>';spawns.innerHTML=data.spawns.map(s=>`<div class="row"><span>${s.land}</span><span>${Math.round(s.x)} / ${Math.round(s.z)}</span></div>`).join('')||'<div class="small">Keine Land-Spawns.</div>'}
+    canvas.addEventListener('mousedown',e=>{dragging=true;last=e});addEventListener('mouseup',()=>dragging=false);addEventListener('mousemove',e=>{if(!dragging)return;offX+=e.clientX-last.clientX;offY+=e.clientY-last.clientY;last=e;draw()});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();const m=e.deltaY<0?1.18:.85;const x=e.offsetX,z=e.offsetY;offX=x-(x-offX)*m;offY=z-(z-offY)*m;scale=Math.max(1,Math.min(80,scale*m));draw()},{passive:false});
+    document.getElementById('fit').onclick=fit;worldSelect.onchange=()=>load().then(fit);
+    resize();load().then(fit);setInterval(load,1000);
+  </script>
+</body>
+</html>
