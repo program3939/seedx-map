@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SeedX World Map</title>
+  <style>
+    :root{--bg:#0d1117;--panel:#151b24;--panel2:#1d2633;--line:#2e4057;--text:#e6edf3;--muted:#8fa3b8;--accent:#f0b84a;--red:#ff4d5f}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 20% 0%,#1c2d31 0,#0d1117 42%,#070a0f 100%);color:var(--text);font-family:Georgia,'Times New Roman',serif;overflow:hidden}
+    header{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid var(--line);background:rgba(13,17,23,.86);backdrop-filter:blur(10px)}
+    h1{margin:0;font-size:22px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+    .bar{display:flex;gap:10px;align-items:center}.pill,select,button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:999px;padding:9px 13px}
+    button{cursor:pointer} button:hover{border-color:var(--accent)}
+    main{display:grid;grid-template-columns:1fr 330px;height:calc(100vh - 64px)}
+    canvas{width:100%;height:100%;display:block;cursor:grab}.side{border-left:1px solid var(--line);background:rgba(21,27,36,.94);padding:18px;overflow:auto}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.015));border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:14px}
+    .card h2{font-size:14px;margin:0 0 10px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+    .row{display:flex;justify-content:space-between;gap:10px;color:var(--muted);padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)}.row:last-child{border-bottom:0}
+    .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}.warn{color:var(--red)}.small{color:var(--muted);font-size:12px;line-height:1.45}
+    @media(max-width:900px){main{grid-template-columns:1fr}.side{position:absolute;right:10px;top:74px;bottom:10px;width:min(330px,calc(100vw - 20px));border:1px solid var(--line);border-radius:18px}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SeedX World Map</h1>
+    <div class="bar">
+      <select id="world"></select>
+      <button id="fit">Ganze Welt</button>
+      <span class="pill" id="status">lade...</span>
+    </div>
+  </header>
+  <main>
+    <canvas id="map"></canvas>
+    <aside class="side">
+      <div class="card"><h2>Info</h2><div class="small" id="info">Mausrad: Zoom. Ziehen: Karte bewegen. Angezeigt wird die komplette generierte Welt aus den .mca-Dateien, plus Claims, Flaggen, Land-Spawns, Spieler und geladene Terrain-Details. Es werden keine neuen Chunks erzeugt.</div></div>
+      <div class="card"><h2>Spieler</h2><div id="players"></div></div>
+      <div class="card"><h2>Laender</h2><div id="lands"></div></div>
+      <div class="card"><h2>Flaggen</h2><div id="flags"></div></div>
+      <div class="card"><h2>Spawns</h2><div id="spawns"></div></div>
+    </aside>
+  </main>
+  <script>
+    const token = '';
+    const canvas = document.getElementById('map');
+    const ctx = canvas.getContext('2d');
+    const worldSelect = document.getElementById('world');
+    let data = null, scale = 18, offX = 0, offY = 0, dragging = false, last = null;
+    function resize(){canvas.width=canvas.clientWidth*devicePixelRatio;canvas.height=canvas.clientHeight*devicePixelRatio;draw()}
+    addEventListener('resize', resize);
+    function api(){const w=worldSelect.value||'';return w?`data/${encodeURIComponent(w)}.json?v=${Date.now()}`:`data/worldmap.json?v=${Date.now()}`}
+    async function load(){try{const res=await fetch(api(),{cache:'no-store'});data=await res.json();if(data.error)throw new Error(data.error);syncWorlds();document.getElementById('status').textContent=new Date(data.generatedAt).toLocaleTimeString();renderLists();draw()}catch(e){document.getElementById('status').textContent='offline'}}
+    function syncWorlds(){const old=worldSelect.value;worldSelect.innerHTML='';for(const w of data.worlds){const o=document.createElement('option');o.value=w;o.textContent=w;worldSelect.appendChild(o)}worldSelect.value=old||data.world}
+    function fit(){if(!data)return;const b=data.bounds;const ww=(b.maxX-b.minX+1),hh=(b.maxZ-b.minZ+1);scale=Math.max(2,Math.min((canvas.width/devicePixelRatio-80)/ww,(canvas.height/devicePixelRatio-80)/hh));offX=canvas.width/devicePixelRatio/2-((b.minX+b.maxX)/2)*scale;offY=canvas.height/devicePixelRatio/2-((b.minZ+b.maxZ)/2)*scale;draw()}
+    function sx(x){return x*scale+offX} function sz(z){return z*scale+offY}
+    function draw(){if(!data)return;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);ctx.clearRect(0,0,canvas.clientWidth,canvas.clientHeight);ctx.fillStyle='#0a0f14';ctx.fillRect(0,0,canvas.clientWidth,canvas.clientHeight);grid();for(const r of data.generatedRegions)region(r.x,r.z,r.count);for(const g of data.generatedChunks)rect(g.x,g.z,'#1c3541',.42);for(const c of data.terrain)rect(c.x,c.z,c.color,.75);for(const c of data.claims)rect(c.x,c.z,c.color,c.wartime?.72:.48,true);for(const f of data.flags)marker(f.x/16,f.z/16,'#ffdf5d','F'+f.id);for(const s of data.spawns)marker(s.chunkX,s.chunkZ,'#67e8f9','SP');for(const p of data.players)marker(p.chunkX+.5,p.chunkZ+.5,'#ffffff',p.name)}
+    function grid(){const step=Math.max(1,Math.pow(2,Math.floor(Math.log2(48/scale))));ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=1;const minX=Math.floor((-offX)/scale/step)*step,maxX=Math.ceil((canvas.clientWidth-offX)/scale/step)*step,minZ=Math.floor((-offY)/scale/step)*step,maxZ=Math.ceil((canvas.clientHeight-offY)/scale/step)*step;for(let x=minX;x<=maxX;x+=step){ctx.beginPath();ctx.moveTo(sx(x),0);ctx.lineTo(sx(x),canvas.clientHeight);ctx.stroke()}for(let z=minZ;z<=maxZ;z+=step){ctx.beginPath();ctx.moveTo(0,sz(z));ctx.lineTo(canvas.clientWidth,sz(z));ctx.stroke()}}
+    function rect(x,z,color,a,border=false){ctx.globalAlpha=a;ctx.fillStyle=color;ctx.fillRect(sx(x),sz(z),Math.max(1,scale),Math.max(1,scale));ctx.globalAlpha=1;if(border){ctx.strokeStyle='rgba(255,255,255,.18)';ctx.strokeRect(sx(x),sz(z),Math.max(1,scale),Math.max(1,scale))}}
+    function region(x,z,count){const alpha=Math.min(.30,.08+count/1024*.22);ctx.globalAlpha=alpha;ctx.fillStyle='#102432';ctx.fillRect(sx(x*32),sz(z*32),Math.max(1,32*scale),Math.max(1,32*scale));ctx.globalAlpha=.28;ctx.strokeStyle='#2e5263';ctx.strokeRect(sx(x*32),sz(z*32),Math.max(1,32*scale),Math.max(1,32*scale));ctx.globalAlpha=1}
+    function marker(x,z,color,label){const px=sx(x),pz=sz(z);ctx.fillStyle=color;ctx.beginPath();ctx.arc(px,pz,6,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#05070a';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#fff';ctx.font='12px Georgia';ctx.fillText(label,px+8,pz-8)}
+    function renderLists(){info.innerHTML=`Generierte Chunks: ${data.generatedChunkCount}${data.generatedChunkTruncated?' (Detailanzeige limitiert, Regionen komplett sichtbar)':''}<br>Region-Dateien: ${data.generatedRegions.length}<br>Flaggen: ${data.flags.length} | Spawns: ${data.spawns.length}<br>Mausrad: Zoom. Ziehen: Karte bewegen.`;players.innerHTML=data.players.map(p=>`<div class="row"><span>${p.name}</span><span>${Math.round(p.x)} / ${Math.round(p.z)}</span></div>`).join('')||'<div class="small">Keine Spieler online.</div>';const by={};for(const c of data.claims){by[c.land]??={color:c.color,count:0,war:c.wartime};by[c.land].count++}lands.innerHTML=Object.entries(by).map(([n,v])=>`<div class="row"><span><i class="dot" style="background:${v.color}"></i>${n}${v.war?' <b class="warn">WAR</b>':''}</span><span>${v.count} Chunks</span></div>`).join('')||'<div class="small">Keine Claims.</div>';flags.innerHTML=data.flags.map(f=>`<div class="row"><span>F${f.id} ${f.land}</span><span>${f.x} / ${f.z}</span></div>`).join('')||'<div class="small">Keine Flaggen.</div>';spawns.innerHTML=data.spawns.map(s=>`<div class="row"><span>${s.land}</span><span>${Math.round(s.x)} / ${Math.round(s.z)}</span></div>`).join('')||'<div class="small">Keine Land-Spawns.</div>'}
+    canvas.addEventListener('mousedown',e=>{dragging=true;last=e});addEventListener('mouseup',()=>dragging=false);addEventListener('mousemove',e=>{if(!dragging)return;offX+=e.clientX-last.clientX;offY+=e.clientY-last.clientY;last=e;draw()});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();const m=e.deltaY<0?1.18:.85;const x=e.offsetX,z=e.offsetY;offX=x-(x-offX)*m;offY=z-(z-offY)*m;scale=Math.max(1,Math.min(80,scale*m));draw()},{passive:false});
+    document.getElementById('fit').onclick=fit;worldSelect.onchange=()=>load().then(fit);
+    resize();load().then(fit);setInterval(load,2500);
+  </script>
+</body>
+</html>
