@@ -1,0 +1,80 @@
+:root {
+  --seedx-panel: rgba(13, 18, 25, 0.86);
+  --seedx-border: rgba(245, 197, 66, 0.42);
+  --seedx-text: #f8fafc;
+  --seedx-muted: #a7b0bd;
+  --seedx-gold: #f5c542;
+  --seedx-blue: #38bdf8;
+  --seedx-red: #ef4444;
+}
+
+body {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  background:
+    linear-gradient(135deg, rgba(39, 80, 52, 0.24), rgba(24, 38, 70, 0.22)),
+    #0f172a;
+}
+
+.map {
+  background:
+    linear-gradient(45deg, rgba(71, 112, 54, 0.18) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(71, 112, 54, 0.18) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(120, 84, 45, 0.16) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(120, 84, 45, 0.16) 75%),
+    #172415;
+  background-size: 32px 32px;
+}
+
+.seedx-marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.seedx-marker--flag {
+  background: var(--seedx-gold);
+}
+
+.seedx-marker--spawn {
+  background: var(--seedx-blue);
+}
+
+.seedx-popup {
+  min-width: 220px;
+  color: var(--seedx-text);
+  font: 600 13px/1.45 "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.seedx-popup h3 {
+  margin: 0 0 8px;
+  color: var(--seedx-gold);
+  font-size: 16px;
+}
+
+.seedx-popup p {
+  margin: 4px 0;
+  color: var(--seedx-muted);
+}
+
+.seedx-popup strong {
+  color: var(--seedx-text);
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--seedx-panel);
+  border: 1px solid var(--seedx-border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.leaflet-popup-content {
+  margin: 13px 15px;
+}
